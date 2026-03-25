@@ -1,6 +1,7 @@
 import { ChatRequest, ChatResponse } from '../types/chat.types';
 import { ProviderFactory } from '../providers/ProviderFactory';
 import { IAIProvider } from '../providers/interfaces/IAIProvider';
+import { LLMRouter } from './LLMRouter';
 import { logger } from '../utils/logger';
 import { InternalServerError } from '../utils/errors';
 import { Cache } from '../utils/cache';
@@ -14,7 +15,8 @@ export class ChatService {
 
   constructor(
     private readonly providerFactory: ProviderFactory,
-    private readonly cache: Cache
+    private readonly cache: Cache,
+    private readonly llmRouter: LLMRouter
   ) {}
 
   /**
@@ -35,12 +37,25 @@ export class ChatService {
         return cachedResponse;
       }
 
-      // Select provider
+      // Use LLM Router to determine which provider to use
+      const routingDecision = this.llmRouter.route(message, provider);
+      
+      logger.info(`LLM Router decision:`, {
+        userId,
+        selectedProvider: routingDecision.provider,
+        reason: routingDecision.reason,
+        messageLength: routingDecision.metadata.messageLength,
+        threshold: routingDecision.metadata.threshold,
+        wasOverridden: routingDecision.metadata.wasOverridden,
+      });
+
+      // Select provider based on routing decision
       let selectedProvider: IAIProvider;
-      if (provider === 'auto') {
+      if (routingDecision.provider === 'auto') {
+        // Fallback to auto-selection if router returns 'auto'
         selectedProvider = await this.providerFactory.getAutoProvider(userId);
       } else {
-        selectedProvider = this.providerFactory.getProvider(provider);
+        selectedProvider = this.providerFactory.getProvider(routingDecision.provider);
       }
 
       // Check provider availability
@@ -61,6 +76,7 @@ export class ChatService {
         userId,
         tokensUsed: providerResponse.tokensUsed,
         model: providerResponse.model,
+        routingReason: routingDecision.reason,
       });
 
       // Return formatted response

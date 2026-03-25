@@ -2,7 +2,7 @@
  * Chat API Types and Interfaces
  */
 
-export type AIProvider = 'auto' | 'openai' | 'gemini';
+export type AIProvider = 'auto' | 'openai' | 'gemini' | 'anthropic' | 'azure' | 'perplexity';
 
 export interface ChatRequest {
   message: string;

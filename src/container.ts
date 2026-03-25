@@ -1,8 +1,14 @@
 import { Container, SERVICE_NAMES } from './utils/container';
 import { Cache } from './utils/cache';
+import { RedisCache } from './utils/RedisCache';
+import { WinstonLogger } from './utils/WinstonLogger';
+import { JWTService } from './middleware/jwtAuth';
+import { CircuitBreakerManager } from './utils/circuitBreaker';
+import { SecretsManager } from './utils/secretsManager';
 import { ProviderFactory } from './providers/ProviderFactory';
 import { ChatService } from './services/chatService';
 import { HealthService } from './services/healthService';
+import { LLMRouter } from './services/LLMRouter';
 
 /**
  * Application Dependency Injection Container
@@ -20,10 +26,30 @@ export const container = new Container();
  * These are shared across the entire application
  */
 
-// Cache instance (singleton - shared state for caching)
+
+// RedisCache instance (singleton)
 container.registerSingleton(SERVICE_NAMES.CACHE, () => {
-  const cache = new Cache();
-  return cache;
+  return new RedisCache();
+});
+
+// WinstonLogger instance (singleton)
+container.registerSingleton(SERVICE_NAMES.LOGGER, () => {
+  return new WinstonLogger();
+});
+
+// JWTService instance (singleton)
+container.registerSingleton('jwtService', () => {
+  return new JWTService();
+});
+
+// CircuitBreakerManager instance (singleton)
+container.registerSingleton('circuitBreakerManager', () => {
+  return new CircuitBreakerManager();
+});
+
+// SecretsManager instance (singleton)
+container.registerSingleton('secretsManager', () => {
+  return new SecretsManager();
 });
 
 /**
@@ -41,6 +67,11 @@ container.registerSingleton(SERVICE_NAMES.PROVIDER_FACTORY, () => {
  * Services are singletons by default for efficiency
  */
 
+// LLM Router (singleton - stateless routing logic)
+container.registerSingleton(SERVICE_NAMES.LLM_ROUTER, () => {
+  return new LLMRouter();
+});
+
 // Health Service (singleton - lightweight, no state)
 container.registerSingleton(SERVICE_NAMES.HEALTH_SERVICE, () => {
   return new HealthService();
@@ -50,7 +81,8 @@ container.registerSingleton(SERVICE_NAMES.HEALTH_SERVICE, () => {
 container.registerSingleton(SERVICE_NAMES.CHAT_SERVICE, () => {
   const providerFactory = container.resolve<ProviderFactory>(SERVICE_NAMES.PROVIDER_FACTORY);
   const cache = container.resolve<Cache>(SERVICE_NAMES.CACHE);
-  return new ChatService(providerFactory, cache);
+  const llmRouter = container.resolve<LLMRouter>(SERVICE_NAMES.LLM_ROUTER);
+  return new ChatService(providerFactory, cache, llmRouter);
 });
 
 /**
@@ -59,7 +91,9 @@ container.registerSingleton(SERVICE_NAMES.CHAT_SERVICE, () => {
  */
 export const cleanupContainer = (): void => {
   const cache = container.resolve<Cache>(SERVICE_NAMES.CACHE);
-  cache.destroy();
+  if (cache && typeof cache.destroy === 'function') {
+    cache.destroy();
+  }
 };
 
 /**
@@ -76,4 +110,7 @@ export const getHealthService = (): HealthService => {
 
 export const getCache = (): Cache => {
   return container.resolve<Cache>(SERVICE_NAMES.CACHE);
+
+// New helpers for new services
+// Optionally, add helper functions for new services if needed elsewhere
 };

@@ -42,10 +42,11 @@ export const errorHandler = (
     message,
   };
 
-  // Include stack trace in development
-  if (config.server.env === 'development') {
-    errorResponse.stack = err.stack;
-  }
+  // Never expose stack traces to clients (security risk)
+  // Stack traces are already logged above for debugging
+  // if (config.server.env === 'development') {
+  //   errorResponse.stack = err.stack;
+  // }
 
   res.status(statusCode).json(errorResponse);
 

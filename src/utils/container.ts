@@ -111,4 +111,8 @@ export const SERVICE_NAMES = {
   PROVIDER_FACTORY: 'providerFactory',
   CHAT_SERVICE: 'chatService',
   HEALTH_SERVICE: 'healthService',
+  LLM_ROUTER: 'llmRouter',
+  JWT_SERVICE: 'jwtService',
+  CIRCUIT_BREAKER_MANAGER: 'circuitBreakerManager',
+  SECRETS_MANAGER: 'secretsManager',
 } as const;

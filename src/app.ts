@@ -13,6 +13,7 @@ import { requestId } from './middleware/requestId';
 import { rateLimit } from './middleware/rateLimit';
 import { sanitizeInput } from './middleware/sanitizeInput';
 import { securityHeaders } from './middleware/securityHeaders';
+import { requestTimeout } from './middleware/timeout';
 import { cleanupContainer } from './container';
 
 /**
@@ -117,6 +118,9 @@ class App {
   private initializeLoggingMiddlewares(): void {
     // Request ID for tracing
     this.app.use(requestId);
+
+    // Request timeout (prevent hung requests - 30s default)
+    this.app.use(requestTimeout({ timeout: 30000 }));
 
     // Request logging
     this.app.use(requestLogger);

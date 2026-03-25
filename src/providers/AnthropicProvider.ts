@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { IAIProvider } from './interfaces/IAIProvider';
 import { ProviderResponse } from '../types/chat.types';
 import { logger } from '../utils/logger';
@@ -8,12 +8,12 @@ import { InternalServerError, BadRequestError } from '../utils/errors';
 /**
  * Error types for user-friendly messaging
  */
-enum OpenAIErrorType {
+enum AnthropicErrorType {
   AUTHENTICATION = 'authentication',
   RATE_LIMIT = 'rate_limit',
   TIMEOUT = 'timeout',
   INVALID_REQUEST = 'invalid_request',
-  MODEL_OVERLOADED = 'model_overloaded',
+  OVERLOADED = 'overloaded',
   NETWORK = 'network',
   UNKNOWN = 'unknown',
 }
@@ -21,47 +21,47 @@ enum OpenAIErrorType {
 /**
  * User-friendly error messages
  */
-const ERROR_MESSAGES: Record<OpenAIErrorType, string> = {
-  [OpenAIErrorType.AUTHENTICATION]: 'OpenAI API key is invalid or missing. Please check your configuration.',
-  [OpenAIErrorType.RATE_LIMIT]: 'OpenAI rate limit exceeded. Please try again in a moment.',
-  [OpenAIErrorType.TIMEOUT]: 'OpenAI request timed out. Please try again.',
-  [OpenAIErrorType.INVALID_REQUEST]: 'Invalid request to OpenAI. Please check your message.',
-  [OpenAIErrorType.MODEL_OVERLOADED]: 'OpenAI is currently overloaded. Please try again shortly.',
-  [OpenAIErrorType.NETWORK]: 'Network error connecting to OpenAI. Please check your connection.',
-  [OpenAIErrorType.UNKNOWN]: 'An unexpected error occurred with OpenAI. Please try again.',
+const ERROR_MESSAGES: Record<AnthropicErrorType, string> = {
+  [AnthropicErrorType.AUTHENTICATION]: 'Anthropic API key is invalid or missing. Please check your configuration.',
+  [AnthropicErrorType.RATE_LIMIT]: 'Anthropic rate limit exceeded. Please try again in a moment.',
+  [AnthropicErrorType.TIMEOUT]: 'Anthropic request timed out. Please try again.',
+  [AnthropicErrorType.INVALID_REQUEST]: 'Invalid request to Anthropic. Please check your message.',
+  [AnthropicErrorType.OVERLOADED]: 'Anthropic is currently overloaded. Please try again shortly.',
+  [AnthropicErrorType.NETWORK]: 'Network error connecting to Anthropic. Please check your connection.',
+  [AnthropicErrorType.UNKNOWN]: 'An unexpected error occurred with Anthropic. Please try again.',
 };
 
 /**
- * OpenAI Provider Implementation
- * Uses official OpenAI SDK with retry logic, timeout, and error mapping
+ * Anthropic Provider Implementation
+ * Uses official Anthropic SDK with retry logic, timeout, and error mapping
  */
-export class OpenAIProvider implements IAIProvider {
-  private client: OpenAI | null = null;
+export class AnthropicProvider implements IAIProvider {
+  private client: Anthropic | null = null;
   private readonly model: string;
   private readonly timeout: number;
   private readonly maxRetries: number;
 
   constructor() {
-    this.model = config.openai.model;
-    this.timeout = config.openai.timeout;
-    this.maxRetries = config.openai.maxRetries;
+    this.model = config.anthropic.model;
+    this.timeout = config.anthropic.timeout;
+    this.maxRetries = config.anthropic.maxRetries;
   }
 
   /**
-   * Initialize OpenAI client if API key is available
+   * Initialize Anthropic client if API key is available
    */
   private initializeClient(): void {
-    if (!config.openai.apiKey) {
+    if (!config.anthropic.apiKey) {
       return;
     }
 
     if (!this.client) {
-      this.client = new OpenAI({
-        apiKey: config.openai.apiKey,
+      this.client = new Anthropic({
+        apiKey: config.anthropic.apiKey,
         timeout: this.timeout,
         maxRetries: this.maxRetries,
       });
-      logger.debug('OpenAI client initialized', {
+      logger.debug('Anthropic client initialized', {
         model: this.model,
         timeout: this.timeout,
         maxRetries: this.maxRetries,
@@ -70,45 +70,45 @@ export class OpenAIProvider implements IAIProvider {
   }
 
   /**
-   * Check if OpenAI is available for the user
+   * Check if Anthropic is available for the user
    */
   async isAvailable(userId: string): Promise<boolean> {
     // For BYOK model, check if user has configured their own key
     // For now, use global configuration
-    const available = !!config.openai.apiKey;
+    const available = !!config.anthropic.apiKey;
     
-    logger.debug(`OpenAI availability check for user ${userId}: ${available}`);
+    logger.debug(`Anthropic availability check for user ${userId}: ${available}`);
     return available;
   }
 
   /**
-   * Map OpenAI errors to user-friendly error types
+   * Map Anthropic errors to user-friendly error types
    */
-  private mapError(error: unknown): OpenAIErrorType {
-    if (error instanceof OpenAI.APIError) {
+  private mapError(error: unknown): AnthropicErrorType {
+    if (error instanceof Anthropic.APIError) {
       // Authentication errors
       if (error.status === 401 || error.status === 403) {
-        return OpenAIErrorType.AUTHENTICATION;
+        return AnthropicErrorType.AUTHENTICATION;
       }
       
       // Rate limit errors
       if (error.status === 429) {
-        return OpenAIErrorType.RATE_LIMIT;
+        return AnthropicErrorType.RATE_LIMIT;
       }
       
       // Invalid request
       if (error.status === 400) {
-        return OpenAIErrorType.INVALID_REQUEST;
+        return AnthropicErrorType.INVALID_REQUEST;
       }
       
-      // Model overloaded
-      if (error.status === 503) {
-        return OpenAIErrorType.MODEL_OVERLOADED;
+      // Overloaded
+      if (error.status === 529 || error.status === 503) {
+        return AnthropicErrorType.OVERLOADED;
       }
       
       // Network timeout
       if (error.message?.includes('timeout') || error.message?.includes('timed out')) {
-        return OpenAIErrorType.TIMEOUT;
+        return AnthropicErrorType.TIMEOUT;
       }
     }
     
@@ -118,20 +118,20 @@ export class OpenAIProvider implements IAIProvider {
       error.message?.includes('ENOTFOUND') ||
       error.message?.includes('network')
     )) {
-      return OpenAIErrorType.NETWORK;
+      return AnthropicErrorType.NETWORK;
     }
     
-    return OpenAIErrorType.UNKNOWN;
+    return AnthropicErrorType.UNKNOWN;
   }
 
   /**
-   * Generate response from OpenAI with retry logic
+   * Generate response from Anthropic with retry logic
    */
   async generateResponse(message: string, userId: string): Promise<ProviderResponse> {
     this.initializeClient();
 
     if (!this.client) {
-      throw new InternalServerError(ERROR_MESSAGES[OpenAIErrorType.AUTHENTICATION]);
+      throw new InternalServerError(ERROR_MESSAGES[AnthropicErrorType.AUTHENTICATION]);
     }
 
     const startTime = Date.now();
@@ -141,36 +141,39 @@ export class OpenAIProvider implements IAIProvider {
     // Retry loop
     while (attempt <= this.maxRetries) {
       try {
-        logger.debug(`OpenAI request attempt ${attempt + 1}/${this.maxRetries + 1}`, {
+        logger.debug(`Anthropic request attempt ${attempt + 1}/${this.maxRetries + 1}`, {
           userId,
           model: this.model,
           messageLength: message.length,
         });
 
-        const completion = await this.client.chat.completions.create({
+        const completion = await this.client.messages.create({
           model: this.model,
+          max_tokens: 2000,
           messages: [
-            {
-              role: 'system',
-              content: 'You are a helpful AI assistant. Provide clear, concise, and accurate responses.',
-            },
             {
               role: 'user',
               content: message,
             },
           ],
-          temperature: 0.7,
-          max_tokens: 2000,
+          system: 'You are a helpful AI assistant. Provide clear, concise, and accurate responses.',
         });
 
         const latency = Date.now() - startTime;
-        const responseText = completion.choices[0]?.message?.content || '';
-        const tokensUsed = completion.usage?.total_tokens || 0;
-        const promptTokens = completion.usage?.prompt_tokens || 0;
-        const completionTokens = completion.usage?.completion_tokens || 0;
+        
+        // Extract text from response
+        const responseText = completion.content
+          .filter((block) => block.type === 'text')
+          .map((block) => ('text' in block ? block.text : ''))
+          .join('\n');
+
+        // Token usage from Anthropic API
+        const tokensUsed = (completion.usage?.input_tokens || 0) + (completion.usage?.output_tokens || 0);
+        const promptTokens = completion.usage?.input_tokens || 0;
+        const completionTokens = completion.usage?.output_tokens || 0;
 
         // Log successful response
-        logger.info('OpenAI response generated successfully', {
+        logger.info('Anthropic response generated successfully', {
           userId,
           model: this.model,
           latency: `${latency}ms`,
@@ -183,7 +186,7 @@ export class OpenAIProvider implements IAIProvider {
         // Return clean text (no metadata)
         return {
           text: responseText.trim(),
-          provider: 'openai',
+          provider: 'anthropic',
           model: this.model,
           tokensUsed,
         };
@@ -196,7 +199,7 @@ export class OpenAIProvider implements IAIProvider {
         const errorMessage = ERROR_MESSAGES[errorType];
         const latency = Date.now() - startTime;
 
-        logger.error(`OpenAI request failed (attempt ${attempt}/${this.maxRetries + 1})`, {
+        logger.error(`Anthropic request failed (attempt ${attempt}/${this.maxRetries + 1})`, {
           userId,
           model: this.model,
           errorType,
@@ -205,8 +208,8 @@ export class OpenAIProvider implements IAIProvider {
         });
 
         // Don't retry on authentication or invalid request errors
-        if (errorType === OpenAIErrorType.AUTHENTICATION || 
-            errorType === OpenAIErrorType.INVALID_REQUEST) {
+        if (errorType === AnthropicErrorType.AUTHENTICATION || 
+            errorType === AnthropicErrorType.INVALID_REQUEST) {
           throw new BadRequestError(errorMessage);
         }
 
@@ -231,6 +234,6 @@ export class OpenAIProvider implements IAIProvider {
    * Get provider name
    */
   getProviderName(): string {
-    return 'openai';
+    return 'anthropic';
   }
 }

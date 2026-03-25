@@ -25,6 +25,9 @@ export interface Config {
   };
   logging: {
     level: 'debug' | 'info' | 'warn' | 'error';
+    file?: string;
+    maxSize?: string;
+    maxFiles?: number;
   };
   rateLimit: {
     enabled: boolean;
@@ -33,6 +36,60 @@ export interface Config {
   };
   security: {
     encryptionKey?: string;
+    jwtSecret?: string;
+    jwtExpiresIn?: string;
+  };
+  redis: {
+    host: string;
+    port: number;
+    password?: string;
+    db?: number;
+    tls?: boolean;
+  };
+  circuitBreaker: {
+    timeout: number;
+    errorThresholdPercentage: number;
+    resetTimeout: number;
+  };
+  secretsManager: {
+    provider: string;
+    config?: Record<string, unknown>;
+  };
+  openai: {
+    apiKey?: string;
+    model: string;
+    timeout: number;
+    maxRetries: number;
+  };
+  gemini: {
+    apiKey?: string;
+    model: string;
+    timeout: number;
+    maxRetries: number;
+  };
+  anthropic: {
+    apiKey?: string;
+    model: string;
+    timeout: number;
+    maxRetries: number;
+  };
+  azure: {
+    apiKey?: string;
+    endpoint?: string;
+    deploymentName?: string;
+    timeout: number;
+    maxRetries: number;
+  };
+  perplexity: {
+    apiKey?: string;
+    model: string;
+    timeout: number;
+    maxRetries: number;
+  };
+  router: {
+    lengthThreshold: number;
+    shortMessageProvider: string;
+    longMessageProvider: string;
   };
 }
 
@@ -169,6 +226,58 @@ function loadConfig(): Config {
     security: {
       encryptionKey,
     },
+    redis: {
+      host: getEnvVar('REDIS_HOST', 'localhost'),
+      port: getEnvInt('REDIS_PORT', 6379, 1, 65535),
+      password: process.env['REDIS_PASSWORD'],
+      db: getEnvInt('REDIS_DB', 0, 0, 15),
+      tls: getEnvBool('REDIS_TLS', false),
+    },
+    circuitBreaker: {
+      timeout: getEnvInt('CB_TIMEOUT', 10000, 1000, 60000),
+      errorThresholdPercentage: getEnvInt('CB_ERROR_THRESHOLD', 50, 1, 100),
+      resetTimeout: getEnvInt('CB_RESET_TIMEOUT', 30000, 1000, 60000),
+    },
+    secretsManager: {
+      provider: getEnvVar('SECRETS_PROVIDER', 'env'),
+      config: {},
+    },
+    openai: {
+      apiKey: process.env['OPENAI_API_KEY'],
+      model: getEnvVar('OPENAI_MODEL', 'gpt-4'),
+      timeout: getEnvInt('OPENAI_TIMEOUT', 10000, 1000, 60000),
+      maxRetries: getEnvInt('OPENAI_MAX_RETRIES', 2, 0, 5),
+    },
+    gemini: {
+      apiKey: process.env['GEMINI_API_KEY'],
+      model: getEnvVar('GEMINI_MODEL', 'gemini-pro'),
+      timeout: getEnvInt('GEMINI_TIMEOUT', 10000, 1000, 60000),
+      maxRetries: getEnvInt('GEMINI_MAX_RETRIES', 2, 0, 5),
+    },
+    anthropic: {
+      apiKey: process.env['ANTHROPIC_API_KEY'],
+      model: getEnvVar('ANTHROPIC_MODEL', 'claude-3-5-sonnet-20241022'),
+      timeout: getEnvInt('ANTHROPIC_TIMEOUT', 10000, 1000, 60000),
+      maxRetries: getEnvInt('ANTHROPIC_MAX_RETRIES', 2, 0, 5),
+    },
+    azure: {
+      apiKey: process.env['AZURE_OPENAI_API_KEY'],
+      endpoint: process.env['AZURE_OPENAI_ENDPOINT'],
+      deploymentName: process.env['AZURE_OPENAI_DEPLOYMENT_NAME'],
+      timeout: getEnvInt('AZURE_OPENAI_TIMEOUT', 10000, 1000, 60000),
+      maxRetries: getEnvInt('AZURE_OPENAI_MAX_RETRIES', 2, 0, 5),
+    },
+    perplexity: {
+      apiKey: process.env['PERPLEXITY_API_KEY'],
+      model: getEnvVar('PERPLEXITY_MODEL', 'llama-3.1-sonar-large-128k-online'),
+      timeout: getEnvInt('PERPLEXITY_TIMEOUT', 10000, 1000, 60000),
+      maxRetries: getEnvInt('PERPLEXITY_MAX_RETRIES', 2, 0, 5),
+    },
+    router: {
+      lengthThreshold: getEnvInt('ROUTER_LENGTH_THRESHOLD', 100, 1, 10000),
+      shortMessageProvider: getEnvVar('ROUTER_SHORT_MESSAGE_PROVIDER', 'gemini'),
+      longMessageProvider: getEnvVar('ROUTER_LONG_MESSAGE_PROVIDER', 'openai'),
+    },
   };
 }
 
@@ -184,9 +293,16 @@ try {
   Object.freeze(config.logging);
   Object.freeze(config.rateLimit);
   Object.freeze(config.security);
+  Object.freeze(config.openai);
+  Object.freeze(config.gemini);
+  Object.freeze(config.anthropic);
+  Object.freeze(config.azure);
+  Object.freeze(config.perplexity);
+  Object.freeze(config.router);
 } catch (error) {
   console.error('❌ Configuration validation failed:', error);
   process.exit(1);
 }
 
+export { config };
 export default config;

@@ -1,6 +1,9 @@
 import { IAIProvider } from './interfaces/IAIProvider';
 import { OpenAIProvider } from './OpenAIProvider';
 import { GeminiProvider } from './GeminiProvider';
+import { AnthropicProvider } from './AnthropicProvider';
+import { AzureOpenAIProvider } from './AzureOpenAIProvider';
+import { PerplexityProvider } from './PerplexityProvider';
 import { AIProvider } from '../types/chat.types';
 import { BadRequestError } from '../utils/errors';
 import { logger } from '../utils/logger';
@@ -29,6 +32,9 @@ export class ProviderFactory {
     // Register providers without instantiating them immediately
     this.providers.set('openai', new OpenAIProvider());
     this.providers.set('gemini', new GeminiProvider());
+    this.providers.set('anthropic', new AnthropicProvider());
+    this.providers.set('azure', new AzureOpenAIProvider());
+    this.providers.set('perplexity', new PerplexityProvider());
   }
 
   /**
@@ -52,6 +58,7 @@ export class ProviderFactory {
   /**
    * Auto-select best available provider for user
    * Uses caching to improve performance
+   * OPTIMIZED: Checks all providers in parallel for faster fallback
    */
   async getAutoProvider(userId: string): Promise<IAIProvider> {
     // Check cache for previously selected provider
@@ -68,17 +75,32 @@ export class ProviderFactory {
 
     logger.debug(`Auto-selecting provider for user: ${userId}`);
 
-    // Check providers in order of preference
-    const preferenceOrder = ['openai', 'gemini'];
+    // PERFORMANCE OPTIMIZATION: Check all providers in parallel
+    // Previously: Sequential checks could take seconds if early providers failed
+    // Now: All checks happen simultaneously for faster fallback
+    const preferenceOrder = ['openai', 'anthropic', 'azure', 'perplexity', 'gemini'];
+    
+    const availabilityChecks = await Promise.allSettled(
+      preferenceOrder.map(async (providerName) => {
+        const provider = this.providers.get(providerName);
+        if (!provider) return null;
+        
+        const isAvailable = await this.checkAvailability(provider, userId);
+        return isAvailable ? { providerName, provider } : null;
+      })
+    );
 
+    // Find first available provider in preference order
     for (const providerName of preferenceOrder) {
-      const provider = this.providers.get(providerName);
-      if (provider && (await this.checkAvailability(provider, userId))) {
+      const checkIndex = preferenceOrder.indexOf(providerName);
+      const result = availabilityChecks[checkIndex];
+      
+      if (result && result.status === 'fulfilled' && result.value) {
         logger.info(`Auto-selected provider: ${providerName} for user: ${userId}`);
         
         // Cache the selection
         this.cache.set(cacheKey, providerName, this.PROVIDER_AVAILABILITY_TTL);
-        return provider;
+        return result.value.provider;
       }
     }
 
